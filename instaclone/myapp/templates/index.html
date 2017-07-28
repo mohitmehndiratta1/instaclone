@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>INSTAGRAM CLONE</title>
+</head>
+<body>
+<br>
+<h1>Instagram Clone @ MRIU</h1>
+<h2>Time is: {{ today }} </h2>
+<br> </br>
+<form method="post">
+      {% csrf_token %}
+       <div>
+           <label for="username">Username: </label>
+           <input id="username" type="text" name="username" value="">
+       </div>
+
+       <div>
+           <label for="full_name">Name: </label>
+           <input id="full_name" type="text" name="full_name" value="">
+       </div>
+
+       <div>
+           <label for="email">Email: </label>
+           <input id="email" type="text" name="email" value="">
+       </div>
+
+       <div>
+           <label for="password">Password: </label>
+           <input id="password" type="password" name="password" value="">
+       </div>
+           <input type="submit" value="Sign Up">
+    </form>
+</body>
+</html>
