@@ -1,61 +1,62 @@
-# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
-from django.shortcuts import render, redirect
-
-# Create your views here.
+from django.shortcuts import render,redirect
 from datetime import datetime
-from forms import SignUpForm
-from forms import LoginForm
-from forms import PostForm
-from django.contrib.auth.hashers import make_password, check_password
-from models import UserModel, SessionToken, post
+from models import UserModel , SessionToken , PostModel, PostLikeModel, PostCommentModel
+from form import SignUpForm, LoginForm, PostForm, LikeForm, CommentForm
+from instaclone.settings import BASE_DIR
+
 from imgurpython import ImgurClient
+
+from django.contrib.auth.hashers import make_password, check_password
+
+YOUR_CLIENT_ID = "a6aafcb28ec79df"
+YOUR_CLIENT_SECRET = "d080ec60896f82ded7822335c1e42ecda3170efa"
 
 
 def signup_view(request):
+    today = datetime.now()
     if request.method == "GET":
-        print ('GET REQUEST')
-        today = datetime.now()
-        print (today)
-        signup_form = SignUpForm()
-        return render(request, 'index.html', {'today': today, 'signup_form': signup_form})
-    elif request.method == 'POST':
-            user_data = SignUpForm(request.POST)
-            # print 'success'
-            if user_data.is_valid():
-                username = user_data.cleaned_data['username']
-                name = user_data.cleaned_data['name']
-                email = user_data.cleaned_data['email']
-                password = user_data.cleaned_data['password']
-                print ('%s %s %s %s' % (username, name, email, password))
-                # saving data to DB
-                user = UserModel(name=name,
-                                password=make_password(password),
-                                email=email,
-                                username=username)
-                # print 'success'
-                user.save()
+        form = SignUpForm()
 
-                return render(request, 'success.html', {'name': name})
-            else:
-                return render(request, 'index.html')
+    elif request.method == "POST":
+        form = SignUpForm(request.POST)
+
+        if form.is_valid():
+            username = form.cleaned_data["username"]
+            name = form.cleaned_data["name"]
+            email = form.cleaned_data["email"]
+            password = form.cleaned_data["password"]
+            user = UserModel(name=name, password=make_password(password), email=email, username=username)
+            user.save()
+            return render(request, 'success.html')
+
+
+    return render(request, 'index.html', {'today':today}, {'form':form})
 
 
 def login_view(request):
     if request.method == 'POST':
         form = LoginForm(request.POST)
-        username = form.cleaned_data.get('username')
-        password = form.cleaned_data.get('password')
 
-        user = UserModel.objects.filter(username=username).first()
+        if form.is_valid():
+            username = form.cleaned_data.get('username')
+            password = form.cleaned_data.get('password')
+            user = UserModel.objects.filter(username=username).first()
 
-        UserModel.objects.get(id=1)
-        if user:
-            if check_password(password, user.password):
-                print ('User is valid')
-            else:
-                print ('User is invalid')
+            if user:
+
+                if check_password(password, user.password):
+                    token = SessionToken(user = user)
+                    token.create_token()
+                    token.save()
+                    response = redirect('feed/')
+                    response.set_cookie(key='session_token', value=token.session_token)
+                    return response
+
+
+                else:
+                    print 'User is invalid'
 
     elif request.method == 'GET':
         form = LoginForm()
@@ -63,48 +64,40 @@ def login_view(request):
     return render(request, 'login.html')
 
 
-def feed_view(request):
-    user = check_validation(request)
-    if user:
-        posts = Post.objects.all().order_by('created_on')
-        return render(request, 'feed.html', {})
-    else:
-        return redirect('/login/')
 
 
 def post_view(request):
     user = check_validation(request)
+
     if user:
         if request.method == "GET":
             form = PostForm()
+            return render(request, 'post.html', {'form' : form})
 
-            return render(request, 'post.html', {'form': form})
         elif request.method == 'POST':
-
             form = PostForm(request.POST, request.FILES)
             if form.is_valid():
                 image = form.cleaned_data.get('image')
                 caption = form.cleaned_data.get('caption')
-                post = Post(user=user, image=image, caption=caption)
-                from django.settings import BASE_DIR
-                post.save()
-                path = str(BASE_DIR + "/" + post.image.url)
-                client = ImgurClient('15c84a0dc777c74', '305070c52e960b1ca3448b27dee7a6f58ea99468')
+                post = PostModel(user=user, image=image, caption=caption)
+                path = str(BASE_DIR +"/" +post.image.url)
+                print path
+                client = ImgurClient(YOUR_CLIENT_ID, YOUR_CLIENT_SECRET)
                 post.image_url = client.upload_from_path(path, anon=True)['link']
+
                 post.save()
+                return redirect('/feed/')
 
     else:
         return redirect('/login/')
 
-
-def check_validation(request):
-  if request.COOKIES.get('session_token'):
-    session = SessionToken.objects.filter(session_token=request.COOKIES.get('session_token')).first()
-    if session:
-        return session.user
-  else:
-        return None
-
+def feed_view(request):
+    user = check_validation(request)
+    if user:
+        posts = PostModel.objects.all().order_by('created_on')
+        return render(request, 'feed.html', {'posts': posts})
+    else:
+        return redirect('/login/')
 
 def like_view(request):
     user = check_validation(request)
@@ -112,16 +105,49 @@ def like_view(request):
         form = LikeForm(request.POST)
         if form.is_valid():
             post_id = form.cleaned_data.get('post').id
+            posts = PostModel.objects.all().order_by('-created_on')
+            for post in posts:
 
-            existing_like = LikeModel.objects.filter(post_id=post_id, user=user).first()
+                existing_like = PostLikeModel.objects.filter(post_id=post_id, user=user).first()
+                if existing_like:
+                    post.has_liked = True
 
-            if not existing_like:
-                LikeModel.objects.create(post_id=post_id, user=user)
-            else:
-                existing_like.delete()
+                if not existing_like:
+                    PostLikeModel.objects.create(post_id=post_id, user=user)
+                else:
+                    existing_like.delete()
 
+                return redirect('/feed/')
+
+
+        else:
             return redirect('/feed/')
+
 
     else:
         return redirect('/login/')
 
+def comment_view(request):
+  user = check_validation(request)
+  if user and request.method == 'POST':
+    form = CommentForm(request.POST)
+    if form.is_valid():
+      post_id = form.cleaned_data.get('post').id
+      comment_text = form.cleaned_data.get('comment_text')
+      comment = PostCommentModel.objects.create(user=user, post_id=post_id, comment_text=comment_text)
+      comment.save()
+      return redirect('/feed/')
+    else:
+      return redirect('/feed/')
+
+  else:
+    return redirect('/login')
+
+
+def check_validation(request):
+  if request.COOKIES.get('session_token'):
+    session = SessionToken.objects.filter(session_token=request.COOKIES.get('session_token')).first()
+    if session:
+      return session.user
+  else:
+    return None
